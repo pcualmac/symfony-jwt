@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:latest
+    container_name: symfony_mysql
+    environment:
+        MYSQL_ROOT_PASSWORD: root_password # Replace with a strong root password
+        MYSQL_DATABASE: symfonyjwt
+        MYSQL_USER: user
+        MYSQL_PASSWORD: password # Replace with a strong user password
+    command: --bind-address=0.0.0.0  # Listen on all interfaces
+    volumes:
+        - mysql_data:/var/lib/mysql
+    ports:
+        - "3306:3306"
+    networks:
+        - app_network
+  php:
+    build:
+      context: ./docker/php
+      dockerfile: Dockerfile
+    container_name: symfony_php
+    volumes:
+      - ./:/var/www/html
+      - ./docker/php/conf.d:/usr/local/etc/php/conf.d
+      - ./docker/php/xdebug.ini:/usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini # Optional: For Xdebug
+    environment:
+      PHP_IDE_CONFIG: serverName=symfony # For Xdebug
+      DATABASE_URL: mysql://root:root_password@mysql:3306/symfonyjwt
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      - app_network
+
+  nginx:
+    image: nginx:stable-alpine
+    container_name: symfony_nginx
+    ports:
+      - "80:80"
+      - "443:443" # Optional: For HTTPS
+    volumes:
+      - ../:/var/www/html:ro
+      - ./docker/nginx/certs:/etc/nginx/certs # Optional: For HTTPS
+      - type: bind
+        source: ./docker/nginx/default.conf
+        target: /etc/nginx/conf.d/default.conf
+        read_only: true # Recommended for config files
+    depends_on:
+      - php
+    networks:
+      - app_network
+
+  redis:
+    image: redis:latest
+    container_name: symfony_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - app_network
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: symfony_phpmyadmin
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: root_password # Replace with your root password
+    ports:
+      - "8080:80"
+    depends_on:
+      - mysql
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+    driver: local
+
